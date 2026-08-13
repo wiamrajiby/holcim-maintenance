@@ -13,7 +13,28 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
+// POST intervention terminée → reset simulateur
+router.post('/intervention-terminee', async (req, res) => {
+  try {
+    // Résoudre alerte prédictive
+    await pool.query(`
+      UPDATE alertes 
+      SET statut = 'resolue'
+      WHERE type_alerte = 'predictive' 
+      AND statut = 'active'
+    `)
 
+    // Créer flag dans PostgreSQL
+    await pool.query(`
+      INSERT INTO alertes (type, valeur, niveau, statut, type_alerte, email_envoye)
+      VALUES ('intervention_terminee', 0, 'info', 'resolue', 'intervention', TRUE)
+    `)
+
+    res.json({ message: '✅ Intervention terminée ! Simulateur va reprendre normalement.' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 // POST créer une maintenance
 router.post('/', async (req, res) => {
   try {

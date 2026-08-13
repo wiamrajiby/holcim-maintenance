@@ -1,7 +1,7 @@
 const express = require('express')
 const cors = require('cors')
 require('dotenv').config()
-
+require('./cronJob')
 const app = express()
 
 // Middleware
@@ -22,6 +22,8 @@ app.use('/api/alertes', require('./routes/alertes'))
 app.use('/api/predict', require('./routes/predict'))
 app.use('/api/auth', require('./routes/auth'))           // ← AJOUTE
 app.use('/api/maintenance', require('./routes/maintenance')) // ← AJOUTE
+app.use('/api/simulateur', require('./routes/predict')) // ← AJOUTE
+
 // Démarrage serveur
 const PORT = 5000
 app.listen(PORT, () => {
