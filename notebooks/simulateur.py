@@ -5,7 +5,6 @@ from sklearn.linear_model import LinearRegression
 import time
 import random
 import requests
-from datetime import datetime
 
 conn = psycopg2.connect(
     host="localhost",
@@ -16,32 +15,32 @@ conn = psycopg2.connect(
 )
 cursor = conn.cursor()
 
-# Vider la table
 cursor.execute("TRUNCATE TABLE capteurs_realtime RESTART IDENTITY")
 conn.commit()
 print("✅ Table vidée !")
 
-# Charger vraie data du prof
 df = pd.read_csv('../data/data_cleaned.csv')
 print(f"✅ {len(df)} mesures chargées !")
-
 print("🚀 Simulation démarrée avec vraie data...")
 
-# Historique vibrations pour prédiction
+try:
+    requests.post('http://localhost:5000/api/predict/reset-geree', timeout=2)
+except:
+    pass
+
 historique = []
-i = 7290
+i = 7300
 
 while True:
     try:
-        # Vérifier reset
+        # Vérifier status EN PREMIER
+        geree = False
         try:
             r = requests.get('http://localhost:5000/api/predict/simulateur/status', timeout=1)
-            if r.json().get('reset') == True:
-                print("🔄 Reset ! Panne évitée ✅")
-                i = 7360  # ← Saute après les pannes !
-                historique = []
-                cursor.execute("TRUNCATE TABLE capteurs_realtime RESTART IDENTITY")
-                conn.commit()
+            data = r.json()
+            geree = data.get('geree', False)
+            if data.get('reset') == True:
+                print("✅ Technicien a acquitté !")
                 requests.post('http://localhost:5000/api/predict/simulateur/reset-done', timeout=1)
         except:
             pass
@@ -76,7 +75,7 @@ while True:
         ))
         conn.commit()
 
-        # ← AJOUTE ICI
+        # Créer alerte si panne
         if panne == 1:
             try:
                 requests.post(
@@ -84,16 +83,17 @@ while True:
                     json={
                         'type': 'Vibration critique BC1',
                         'valeur': float(vibration),
-                        'niveau': 'critique' if vibration > 10 else 'avertissement'
+                        'niveau': 'critique' if vibration > 10 else 'avertissement',
+                        'gere': geree
                     },
                     timeout=2
                 )
-                print(f"🚨 Alerte créée dans PostgreSQL !")
+                if geree:
+                    print(f"🔧 PANNE GÉRÉE PAR LE TECHNICIEN ✅")
+                else:
+                    print(f"🚨 Alerte critique créée !")
             except:
                 pass
-
-        # Ajouter au historique
-        historique.append(vibration)
 
         # Ajouter au historique
         historique.append(vibration)
@@ -120,8 +120,6 @@ while True:
                     "recommandation": "Intervention immédiate !"
                 }
             elif tendance > 0:
-                # Calculer jours restants
-                # 1 mesure CSV = 1 heure réelle
                 mesures_restantes = (7 - vibration) / tendance
                 jours_restants = round(mesures_restantes / 24, 1)
 
@@ -133,7 +131,8 @@ while True:
                         "vibration_actuelle": vibration,
                         "recommandation": "Commander les pièces et planifier intervention !"
                     }
-                    print(f"🔮 PRÉDICTION: Panne dans {jours_restants} jours !")
+                    if i % 10 == 0:
+                        print(f"🔮 PRÉDICTION: Panne dans {jours_restants} jours !")
                 else:
                     prediction = {
                         "statut": "normal",
@@ -149,7 +148,6 @@ while True:
                     "vibration_actuelle": vibration
                 }
 
-            # Envoyer prédiction à Node.js
             try:
                 requests.post(
                     'http://localhost:5000/api/predict/save-tendance',
@@ -160,7 +158,10 @@ while True:
                 pass
 
         i += 1
-        time.sleep(2)
+        if panne == 1:
+            time.sleep(8)
+        else:
+            time.sleep(2)
 
     except KeyboardInterrupt:
         print("\n⏹️ Simulation arrêtée !")

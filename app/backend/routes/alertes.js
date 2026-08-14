@@ -17,10 +17,21 @@ router.get('/', async (req, res) => {
 // POST créer une alerte
 router.post('/', async (req, res) => {
   try {
-    const { type, valeur, niveau } = req.body
+    const { type, valeur, niveau, gere } = req.body
+    
+    // Vérifier si alerte prédictive acquittée
+    const predictiveAcquittee = await pool.query(`
+      SELECT * FROM alertes 
+      WHERE type = 'alerte_predictive'
+      AND statut = 'traitee'
+      AND date > NOW() - INTERVAL '5 minutes'
+    `)
+    
+    const statut = predictiveAcquittee.rows.length > 0 ? 'geree' : 'active'
+    
     const result = await pool.query(
-      'INSERT INTO alertes (type, valeur, niveau) VALUES ($1, $2, $3) RETURNING *',
-      [type, valeur, niveau]
+      'INSERT INTO alertes (type, valeur, niveau, statut) VALUES ($1, $2, $3, $4) RETURNING *',
+      [type, valeur, niveau, statut]
     )
     res.json(result.rows[0])
   } catch (err) {
